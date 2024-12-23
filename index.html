@@ -1,0 +1,385 @@
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>雙人對戰遊戲</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
+    <style>
+        body {
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background: #eee0e0;
+        }
+    </style>
+</head>
+<body>
+<script>
+let gameState = 'start'; // 初始為開始畫面
+
+// 角色設定
+let sprites = {
+    player1: {
+        idle: { img: null, width: 78.8, height: 98, frames: 5, scale: 0.9 },
+        walk: { img: null, width: 73, height: 111, frames: 2, scale: 0.8 },
+        jump: { img: null, width: 81.5, height: 111, frames: 2, scale: 0.8 }
+    },
+    player2: {
+        idle: { img: null, width: 44.25, height: 90, frames: 4, scale: 1.2 },
+        walk: { img: null, width: 69.5, height: 74, frames: 2, scale: 1.2 },
+        jump: { img: null, width: 400.5, height: 88, frames: 2, scale: 1.2 }
+    }
+};
+
+let player1 = {
+    x: 200,
+    y: 400,
+    currentState: 'idle',
+    currentFrame: 0,
+    direction: 1,
+    isJumping: false,
+    jumpPower: -15,
+    velocityY: 0,
+    gravity: 0.8,
+    health: 100,
+    width: 60,
+    height: 150,
+    speed: 5,
+    lastUpdate: 0
+};
+
+let player2 = {
+    x: 600,
+    y: 400,
+    currentState: 'idle',
+    currentFrame: 0,
+    direction: -1,
+    isJumping: false,
+    jumpPower: -15,
+    velocityY: 0,
+    gravity: 0.8,
+    health: 100,
+    width: 60,
+    height: 150,
+    speed: 5,
+    lastUpdate: 0
+};
+
+const GROUND_Y = 400;
+const SCREEN_WIDTH = 800;
+const SCREEN_HEIGHT = 600;
+let lastCollisionTime = 0;
+const DAMAGE_COOLDOWN = 500;
+const DAMAGE_AMOUNT = 1;
+const ANIMATION_SPEED = 100; // 動畫更新間隔（毫秒）
+
+// 雷射系統變數
+let lasers = [];
+const LASER_SPEED = 15;
+const LASER_WIDTH = 30;
+const LASER_HEIGHT = 5;
+const LASER_DAMAGE = 10;
+
+// 載入遊戲資源
+function preload() {
+    // 載入背景圖片
+    bgImage = loadImage('13.png');
+
+    // 載入角色圖片
+    sprites.player1.idle.img = loadImage('5.png');
+    sprites.player1.walk.img = loadImage('7.png');
+    sprites.player1.jump.img = loadImage('11.png');
+    
+    sprites.player2.idle.img = loadImage('9.png');
+    sprites.player2.walk.img = loadImage('8.png');
+    sprites.player2.jump.img = loadImage('10.png');
+}
+
+function setup() {
+    createCanvas(SCREEN_WIDTH, SCREEN_HEIGHT);
+    frameRate(60);
+    imageMode(CENTER);
+}
+
+function draw() {
+    if (gameState === 'start') {
+        drawStartScreen(); // 顯示開始畫面
+    } else {
+        gamePlay();
+    }
+}
+
+// 顯示開始畫面
+function drawStartScreen() {
+    background(0); // 黑色背景
+    fill(255); // 白色文字
+    textAlign(CENTER, CENTER);
+    textSize(40);
+    text("雙人對戰遊戲", width/2, height/3); // 顯示遊戲名稱
+
+    textSize(20);
+    text("玩家 1 控制:", width/2, height/2 - 40);
+    text("W - 跳躍", width/2, height/2 - 10);
+    text("A - 左移", width/2, height/2 + 20);
+    text("D - 右移", width/2, height/2 + 50);
+    text("F - 發射", width/2, height/2 + 80);
+
+    text("玩家 2 控制:", width/2, height/2 + 120);
+    text("↑ - 跳躍", width/2, height/2 + 150);
+    text("← - 左移", width/2, height/2 + 180);
+    text("→ - 右移", width/2, height/2 + 210);
+    text("SHIFT - 發射", width/2, height/2 + 240);
+
+    text("按下 ENTER 開始遊戲", width/2, height - 450); // 開始遊戲提示
+}
+
+// 開始遊戲
+function keyPressed() {
+    if (keyCode === ENTER && gameState === 'start') {
+        gameState = 'play'; // 進入遊戲畫面
+    }
+
+    // 角色1跳躍
+    if ((key === 'w' || key === 'W') && !player1.isJumping) {
+        player1.isJumping = true;
+        player1.velocityY = player1.jumpPower;
+        player1.currentState = 'jump';
+    }
+
+    // 角色2跳躍
+    if (keyCode === UP_ARROW && !player2.isJumping) {
+        player2.isJumping = true;
+        player2.velocityY = player2.jumpPower;
+        player2.currentState = 'jump';
+    }
+
+    // 發射雷射
+    if (key === 'f' || key === 'F') { // 玩家1發射
+        lasers.push({
+            x: player1.x + (player1.direction * 30),
+            y: player1.y,
+            direction: player1.direction,
+            speed: LASER_SPEED,
+            fromPlayer: 1
+        });
+    }
+    
+    if (keyCode === SHIFT) { // 玩家2發射
+        lasers.push({
+            x: player2.x + (player2.direction * 30),
+            y: player2.y,
+            direction: player2.direction,
+            speed: LASER_SPEED,
+            fromPlayer: 2
+        });
+    }
+}
+
+function gamePlay() {
+    background(220);
+    
+    // 繪製地板
+    fill(100);
+    rect(0, GROUND_Y + 50, width, 150);
+    
+    // 更新和繪製角色
+    updatePlayer(player1);
+    updatePlayer(player2);
+    
+    // 確保角色在畫面內
+    keepInBounds(player1);
+    keepInBounds(player2);
+    
+    // 更新動畫
+    let currentTime = millis();
+    if (currentTime - player1.lastUpdate > ANIMATION_SPEED) {
+        updateAnimation(player1, sprites.player1);
+        player1.lastUpdate = currentTime;
+    }
+    if (currentTime - player2.lastUpdate > ANIMATION_SPEED) {
+        updateAnimation(player2, sprites.player2);
+        player2.lastUpdate = currentTime;
+    }
+    
+    // 更新和繪製雷射
+    updateLasers();
+    drawLasers();
+    
+    // 繪製角色
+    drawCharacter(player1, sprites.player1);
+    drawCharacter(player2, sprites.player2);
+    
+    checkCollisionAndDamage();
+    drawHealthBars();
+    handleMovement();
+}
+
+function keepInBounds(player) {
+    const halfWidth = (player.width * 0.8) / 2;
+    player.x = constrain(player.x, halfWidth, SCREEN_WIDTH - halfWidth);
+    const halfHeight = player.height / 2;
+    player.y = constrain(player.y, halfHeight, GROUND_Y);
+}
+
+function drawHealthBars() {
+    fill(0);
+    textSize(20);
+    text("P1 HP: " + player1.health, 70, 30);
+    fill(255, 0, 0);
+    rect(10, 40, 200, 20);
+    fill(0, 255, 0);
+    rect(10, 40, player1.health * 2, 20);
+    
+    fill(0);
+    text("P2 HP: " + player2.health, width - 210, 30);
+    fill(255, 0, 0);
+    rect(width - 210, 40, 200, 20);
+    fill(0, 255, 0);
+    rect(width - 210, 40, player2.health * 2, 20);
+}
+
+function checkCollisionAndDamage() {
+    if (checkCollision(player1, player2)) {
+        let currentTime = millis();
+        if (currentTime - lastCollisionTime > DAMAGE_COOLDOWN) {
+            if (player1.x < player2.x) {
+                if (player1.direction > 0) player2.health -= DAMAGE_AMOUNT;
+                if (player2.direction < 0) player1.health -= DAMAGE_AMOUNT;
+            } else {
+                if (player2.direction > 0) player1.health -= DAMAGE_AMOUNT;
+                if (player1.direction < 0) player2.health -= DAMAGE_AMOUNT;
+            }
+            lastCollisionTime = currentTime;
+        }
+    }
+    
+    player1.health = max(0, player1.health);
+    player2.health = max(0, player2.health);
+}
+
+function checkCollision(p1, p2) {
+    return p1.x - p1.width/2 < p2.x + p2.width/2 &&
+           p1.x + p1.width/2 > p2.x - p2.width/2 &&
+           p1.y - p1.height/2 < p2.y + p2.height/2 &&
+           p1.y + p1.height/2 > p2.y - p2.height/2;
+}
+
+function updatePlayer(player) {
+    if (player.isJumping) {
+        player.velocityY += player.gravity;
+        player.y += player.velocityY;
+        
+        if (player.y >= GROUND_Y) {
+            player.y = GROUND_Y;
+            player.velocityY = 0;
+            player.isJumping = false;
+            player.currentState = 'idle';
+        }
+    }
+}
+
+function drawCharacter(player, spriteData) {
+    let currentSprite = spriteData[player.currentState];
+    let sx = player.currentFrame * currentSprite.width;
+    
+    push();
+    translate(player.x, player.y);
+    scale(player.direction * currentSprite.scale, currentSprite.scale);
+    
+    image(currentSprite.img,
+          0, 0,
+          currentSprite.width, currentSprite.height,
+          sx, 0,
+          currentSprite.width, currentSprite.height
+    );
+    pop();
+}
+
+function updateAnimation(player, spriteData) {
+    let totalFrames = spriteData[player.currentState].frames;
+    player.currentFrame = (player.currentFrame + 1) % totalFrames;
+}
+
+function handleMovement() {
+    // 角色1的移動
+    let player1Moved = false;
+    if (keyIsDown(65)) {  // A
+        player1.x -= player1.speed;
+        player1.direction = -1;
+        player1Moved = true;
+    } else if (keyIsDown(68)) {  // D
+        player1.x += player1.speed;
+        player1.direction = 1;
+        player1Moved = true;
+    }
+    
+    if (player1Moved && !player1.isJumping) {
+        player1.currentState = 'walk';
+    } else if (!player1.isJumping) {
+        player1.currentState = 'idle';
+    }
+    
+    // 角色2的移動
+    let player2Moved = false;
+    if (keyIsDown(LEFT_ARROW)) {
+        player2.x -= player2.speed;
+        player2.direction = -1;
+        player2Moved = true;
+    } else if (keyIsDown(RIGHT_ARROW)) {
+        player2.x += player2.speed;
+        player2.direction = 1;
+        player2Moved = true;
+    }
+    
+    if (player2Moved && !player2.isJumping) {
+        player2.currentState = 'walk';
+    } else if (!player2.isJumping) {
+        player2.currentState = 'idle';
+    }
+}
+
+// 雷射更新與繪製
+function updateLasers() {
+    for (let i = lasers.length - 1; i >= 0; i--) {
+        let laser = lasers[i];
+        laser.x += laser.speed * laser.direction;
+        
+        // 檢查雷射是否擊中對手
+        if (laser.fromPlayer === 1 && checkLaserHit(laser, player2)) {
+            player2.health -= LASER_DAMAGE;
+            lasers.splice(i, 1);
+        } else if (laser.fromPlayer === 2 && checkLaserHit(laser, player1)) {
+            player1.health -= LASER_DAMAGE;
+            lasers.splice(i, 1);
+        }
+        
+        // 移除超出畫面的雷射
+        if (laser.x < 0 || laser.x > width) {
+            lasers.splice(i, 1);
+        }
+    }
+}
+
+function drawLasers() {
+    for (let laser of lasers) {
+        if (laser.fromPlayer === 1) {
+            fill(255, 0, 0); // 玩家1的雷射是紅色
+        } else {
+            fill(0, 0, 255); // 玩家2的雷射是藍色
+        }
+        rect(laser.x, laser.y, LASER_WIDTH * laser.direction, LASER_HEIGHT);
+    }
+}
+
+function checkLaserHit(laser, player) {
+    return laser.x > player.x - player.width/2 &&
+           laser.x < player.x + player.width/2 &&
+           laser.y > player.y - player.height/2 &&
+           laser.y < player.y + player.height/2;
+}
+
+</script>
+</body>
+</html>
