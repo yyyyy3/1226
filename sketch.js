@@ -1,42 +1,37 @@
-let circles = []; // 儲存圓圈的陣列
+let video;
+let facemesh;
+let predictions = [];
 
 function setup() {
-  createCanvas(windowWidth, windowHeight); // 設置畫布大小為視窗大小
-  background('#add8e6'); // 設置背景為淡藍色
+  createCanvas(640, 480).position(
+    (windowWidth - 640) / 2,
+    (windowHeight - 480) / 2
+  );
+  video = createCapture(VIDEO);
+  video.size(width, height);
+  video.hide();
 
-  // 創建 100 個圓圈，隨機位置和顏色
-  for (let i = 0; i < 100; i++) {
-    circles.push({
-      x: random(width), // 隨機 x 座標
-      y: random(height), // 隨機 y 座標
-      size: random(20, 50), // 隨機大小
-      color: color(random(255), random(255), random(255)), // 隨機顏色
-    });
-  }
+  facemesh = ml5.facemesh(video, modelReady);
+  facemesh.on('predict', results => {
+    predictions = results;
+  });
+}
+
+function modelReady() {
+  // 模型載入完成，可選擇顯示訊息
 }
 
 function draw() {
-  background('#add8e6'); // 每次重繪背景
+  image(video, 0, 0, width, height);
 
-  // 繪製每個圓圈
-  for (let circle of circles) {
-    // 計算滑鼠與圓圈的距離
-    let d = dist(mouseX, mouseY, circle.x, circle.y);
+  if (predictions.length > 0) {
+    const keypoints = predictions[0].scaledMesh;
 
-    // 根據距離改變圓圈大小和顏色
-    let newSize = map(d, 0, width / 2, 50, 10); // 距離越近，圓圈越大
-    let newColor = color(
-      map(d, 0, width / 2, 255, 100), // R
-      map(d, 0, width / 2, 100, 255), // G
-      map(d, 0, width / 2, 100, 255) // B
-    );
-
-    // 繪製圓圈
-    fill(newColor);
-    noStroke();
-    ellipse(circle.x, circle.y, newSize);
+    // 只在第94點畫紅色圓
+    const [x, y] = keypoints[94];
+    noFill();
+    stroke(255, 0, 0);
+    strokeWeight(4);
+    ellipse(x, y, 100, 100);
   }
-
-
-
 }
